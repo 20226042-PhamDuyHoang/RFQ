@@ -1,7 +1,7 @@
 import logging
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -18,8 +18,6 @@ from backend.services.rfq_service import (
     poll_and_process_responses,
     get_comparison_table,
 )
-from backend.tasks.email_tasks import task_send_rfq_emails, task_poll_vendor_responses
-from backend.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["RFQ"])
@@ -60,38 +58,40 @@ def api_get_rfq(rfq_id: int, db: Session = Depends(get_db)):
 
 @router.post("/rfq/{rfq_id}/send")
 @limiter.limit("5/minute")
-def api_send_rfq_emails(request: Request, rfq_id: int, db: Session = Depends(get_db)):
-    """Gui email RFQ toi tat ca vendors (async qua Celery, fallback sync)."""
+def api_send_rfq_emails(request: Request, background_tasks: BackgroundTasks, rfq_id: int, db: Session = Depends(get_db)):
+    """Gui email RFQ toi tat ca vendors (chay ngam qua BackgroundTasks)."""
     rfq = db.query(RFQ).filter(RFQ.id == rfq_id).first()
     if not rfq:
         raise HTTPException(status_code=404, detail="RFQ not found")
-    try:
-        task = task_send_rfq_emails.delay(rfq_id)
-        return {"task_id": task.id, "status": "queued", "message": f"Sending emails for RFQ #{rfq_id}"}
-    except Exception as broker_err:
-        logger.warning("Celery broker unavailable (%s), falling back to sync", broker_err)
-        result = send_rfq_to_vendors(db, rfq_id)
-        if "error" in result:
-            raise HTTPException(status_code=400, detail=result["error"])
-        return {"task_id": None, "status": "completed", "message": "Sent synchronously", **result}
+
+    def _run():
+        try:
+            result = send_rfq_to_vendors(db, rfq_id)
+            logger.info("Background send done: %s", result)
+        except Exception as exc:
+            logger.error("Background send failed for RFQ #%d: %s", rfq_id, exc)
+
+    background_tasks.add_task(_run)
+    return {"task_id": None, "status": "queued", "message": f"Sending emails for RFQ #{rfq_id} in background"}
 
 
 @router.post("/rfq/{rfq_id}/poll")
 @limiter.limit("5/minute")
-def api_poll_responses(request: Request, rfq_id: int, db: Session = Depends(get_db)):
-    """Poll mailbox de lay email phan hoi tu vendors (async qua Celery, fallback sync)."""
+def api_poll_responses(request: Request, background_tasks: BackgroundTasks, rfq_id: int, db: Session = Depends(get_db)):
+    """Poll mailbox de lay email phan hoi tu vendors (chay ngam qua BackgroundTasks)."""
     rfq = db.query(RFQ).filter(RFQ.id == rfq_id).first()
     if not rfq:
         raise HTTPException(status_code=404, detail="RFQ not found")
-    try:
-        task = task_poll_vendor_responses.delay(rfq_id)
-        return {"task_id": task.id, "status": "queued", "message": f"Polling responses for RFQ #{rfq_id}"}
-    except Exception as broker_err:
-        logger.warning("Celery broker unavailable (%s), falling back to sync", broker_err)
-        result = poll_and_process_responses(db, rfq_id)
-        if "error" in result:
-            raise HTTPException(status_code=400, detail=result["error"])
-        return {"task_id": None, "status": "completed", "message": "Polled synchronously", **result}
+
+    def _run():
+        try:
+            result = poll_and_process_responses(db, rfq_id)
+            logger.info("Background poll done: %s", result)
+        except Exception as exc:
+            logger.error("Background poll failed for RFQ #%d: %s", rfq_id, exc)
+
+    background_tasks.add_task(_run)
+    return {"task_id": None, "status": "queued", "message": f"Polling responses for RFQ #{rfq_id} in background"}
 
 
 # -------------------------------------------------------
@@ -120,11 +120,23 @@ def api_get_responses(rfq_id: int, db: Session = Depends(get_db)):
     return responses
 
 
-@router.get("/task/{task_id}")
-def api_get_task_status(task_id: str):
-    """Kiem tra trang thai cua Celery task."""
-    result = celery_app.AsyncResult(task_id)
-    response = {"task_id": task_id, "status": result.status}
-    if result.ready():
-        response["result"] = result.result
-    return response
+@router.get("/debug/smtp")
+def api_debug_smtp():
+    """Test SMTP connection va tra ve ket qua (chi dung de debug)."""
+    import smtplib
+    from backend.config import settings
+    try:
+        server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10)
+        server.ehlo()
+        server.starttls()
+        server.login(settings.smtp_username, settings.smtp_password)
+        server.quit()
+        return {
+            "status": "ok",
+            "smtp_host": settings.smtp_host,
+            "smtp_port": settings.smtp_port,
+            "smtp_username": settings.smtp_username,
+            "smtp_from_email": settings.smtp_from_email,
+        }
+    except Exception as exc:
+        return {"status": "error", "error": str(exc), "smtp_username": settings.smtp_username}
