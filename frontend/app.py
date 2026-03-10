@@ -8,15 +8,14 @@ from datetime import date, timedelta
 # -------------------------------------------------------
 # Config
 # -------------------------------------------------------
-# API_BASE_URL: set qua env var
-# - Docker local:  http://backend:8000  (default)
-# - Render:        https://<backend-service>.onrender.com  (set trong render.yaml)
-# - Local dev:     http://localhost:8000
+
+# Trong Docker, frontend container giao tiep voi backend qua ten service.
+# Khi chay tren may host, override bang env var API_BASE_URL=http://localhost:8000
+# Tren Render, API_BASE_URL duoc set tu service host (chi co hostname, them https://)
 _api_base_raw = os.environ.get("API_BASE_URL", "http://backend:8000")
-# Render fromService host tra ve hostname k co scheme, prepend https://
-if _api_base_raw and not _api_base_raw.startswith("http"):
+if _api_base_raw and not _api_base_raw.startswith(("http://", "https://")):
     _api_base_raw = "https://" + _api_base_raw
-API_BASE = _api_base_raw.rstrip("/") + "/api"
+API_BASE = _api_base_raw + "/api"
 
 st.set_page_config(
     page_title="RFQ Automation System",
@@ -201,16 +200,6 @@ elif page == "RFQ List":
 
                                 st.subheader("Responses")
                                 responses = detail.get("vendor_responses", [])
-                                # Deduplicate: giu lai response tot nhat moi vendor
-                                seen_vendors = {}
-                                for r in responses:
-                                    key = r["vendor_email"]
-                                    prev = seen_vendors.get(key)
-                                    if prev is None or (
-                                        r["status"] == "extracted" and prev["status"] != "extracted"
-                                    ):
-                                        seen_vendors[key] = r
-                                responses = list(seen_vendors.values())
                                 if responses:
                                     for r in responses:
                                         st.write(f"**{r.get('vendor_name', r['vendor_email'])}** "
@@ -245,13 +234,6 @@ elif page == "Dashboard":
 
             # Chuyen sang DataFrame de hien thi bang
             rows = comparison["rows"]
-            # Deduplicate: giu response tot nhat moi vendor (theo email)
-            seen = {}
-            for r in rows:
-                key = r["vendor_email"]
-                if key not in seen:
-                    seen[key] = r
-            rows = list(seen.values())
             df = pd.DataFrame(rows)
 
             # Rename columns cho dep

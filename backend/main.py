@@ -124,6 +124,8 @@ CORS_ORIGINS = [
     "http://localhost:8000",       # Backend (Swagger UI)
     "http://127.0.0.1:8501",
     "http://127.0.0.1:8000",
+    "https://rfq-project.onrender.com",            # Render frontend
+    "https://rfq-project-frontend.onrender.com",   # Render frontend (alt name)
 ]
 app.add_middleware(
     CORSMiddleware,

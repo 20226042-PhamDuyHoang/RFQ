@@ -61,23 +61,37 @@ def api_get_rfq(rfq_id: int, db: Session = Depends(get_db)):
 @router.post("/rfq/{rfq_id}/send")
 @limiter.limit("5/minute")
 def api_send_rfq_emails(request: Request, rfq_id: int, db: Session = Depends(get_db)):
-    """Gui email RFQ toi tat ca vendors (async qua Celery)."""
+    """Gui email RFQ toi tat ca vendors (async qua Celery, fallback sync)."""
     rfq = db.query(RFQ).filter(RFQ.id == rfq_id).first()
     if not rfq:
         raise HTTPException(status_code=404, detail="RFQ not found")
-    task = task_send_rfq_emails.delay(rfq_id)
-    return {"task_id": task.id, "status": "queued", "message": f"Sending emails for RFQ #{rfq_id}"}
+    try:
+        task = task_send_rfq_emails.delay(rfq_id)
+        return {"task_id": task.id, "status": "queued", "message": f"Sending emails for RFQ #{rfq_id}"}
+    except Exception as broker_err:
+        logger.warning("Celery broker unavailable (%s), falling back to sync", broker_err)
+        result = send_rfq_to_vendors(db, rfq_id)
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return {"task_id": None, "status": "completed", "message": "Sent synchronously", **result}
 
 
 @router.post("/rfq/{rfq_id}/poll")
 @limiter.limit("5/minute")
 def api_poll_responses(request: Request, rfq_id: int, db: Session = Depends(get_db)):
-    """Poll mailbox de lay email phan hoi tu vendors (async qua Celery)."""
+    """Poll mailbox de lay email phan hoi tu vendors (async qua Celery, fallback sync)."""
     rfq = db.query(RFQ).filter(RFQ.id == rfq_id).first()
     if not rfq:
         raise HTTPException(status_code=404, detail="RFQ not found")
-    task = task_poll_vendor_responses.delay(rfq_id)
-    return {"task_id": task.id, "status": "queued", "message": f"Polling responses for RFQ #{rfq_id}"}
+    try:
+        task = task_poll_vendor_responses.delay(rfq_id)
+        return {"task_id": task.id, "status": "queued", "message": f"Polling responses for RFQ #{rfq_id}"}
+    except Exception as broker_err:
+        logger.warning("Celery broker unavailable (%s), falling back to sync", broker_err)
+        result = poll_and_process_responses(db, rfq_id)
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return {"task_id": None, "status": "completed", "message": "Polled synchronously", **result}
 
 
 # -------------------------------------------------------
