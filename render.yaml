@@ -1,0 +1,196 @@
+databases:
+  - name: rfq-postgres
+    databaseName: rfq_automation
+    user: rfq_user
+    plan: free
+
+services:
+  # -------------------------------------------------------
+  # Redis
+  # -------------------------------------------------------
+  - type: redis
+    name: rfq-redis
+    plan: free
+    maxmemoryPolicy: noeviction
+
+  # -------------------------------------------------------
+  # FastAPI Backend
+  # -------------------------------------------------------
+  - type: web
+    name: rfq-backend
+    plan: free
+    runtime: python
+    buildCommand: "./build.sh"
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rfq-postgres
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: rfq-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: rfq-redis
+          type: redis
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: rfq-redis
+          type: redis
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        value: https://integrate.api.nvidia.com/v1
+      - key: OPENAI_MODEL
+        value: openai/gpt-oss-120b
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: SMTP_FROM_NAME
+        value: RFQ Automation System
+      - key: IMAP_HOST
+        value: imap.gmail.com
+      - key: IMAP_PORT
+        value: "993"
+      - key: IMAP_USERNAME
+        sync: false
+      - key: IMAP_PASSWORD
+        sync: false
+      - key: EXCHANGE_RATE_API_KEY
+        sync: false
+      - key: SENDER_NAME
+        sync: false
+      - key: SENDER_POSITION
+        sync: false
+      - key: SENDER_COMPANY
+        sync: false
+
+  # -------------------------------------------------------
+  # Celery Worker
+  # -------------------------------------------------------
+  - type: worker
+    name: rfq-celery-worker
+    plan: free
+    runtime: python
+    buildCommand: "./build.sh"
+    startCommand: celery -A backend.celery_app worker --loglevel=info --concurrency=2
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rfq-postgres
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: rfq-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: rfq-redis
+          type: redis
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: rfq-redis
+          type: redis
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        value: https://integrate.api.nvidia.com/v1
+      - key: OPENAI_MODEL
+        value: openai/gpt-oss-120b
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: IMAP_HOST
+        value: imap.gmail.com
+      - key: IMAP_PORT
+        value: "993"
+      - key: IMAP_USERNAME
+        sync: false
+      - key: IMAP_PASSWORD
+        sync: false
+      - key: EXCHANGE_RATE_API_KEY
+        sync: false
+      - key: SENDER_NAME
+        sync: false
+      - key: SENDER_POSITION
+        sync: false
+      - key: SENDER_COMPANY
+        sync: false
+
+  # -------------------------------------------------------
+  # Celery Beat (periodic polling scheduler)
+  # -------------------------------------------------------
+  - type: worker
+    name: rfq-celery-beat
+    plan: free
+    runtime: python
+    buildCommand: "./build.sh"
+    startCommand: celery -A backend.celery_app beat --loglevel=info
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rfq-postgres
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: rfq-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: rfq-redis
+          type: redis
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: rfq-redis
+          type: redis
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: IMAP_HOST
+        value: imap.gmail.com
+      - key: IMAP_PORT
+        value: "993"
+      - key: IMAP_USERNAME
+        sync: false
+      - key: IMAP_PASSWORD
+        sync: false
+
+  # -------------------------------------------------------
+  # Streamlit Frontend
+  # -------------------------------------------------------
+  - type: web
+    name: rfq-frontend
+    plan: free
+    runtime: python
+    buildCommand: "./build.sh"
+    startCommand: streamlit run frontend/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    envVars:
+      - key: API_BASE_URL
+        fromService:
+          name: rfq-backend
+          type: web
+          property: host

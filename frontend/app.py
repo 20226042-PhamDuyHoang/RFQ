@@ -8,10 +8,15 @@ from datetime import date, timedelta
 # -------------------------------------------------------
 # Config
 # -------------------------------------------------------
-
-# Trong Docker, frontend container giao tiep voi backend qua ten service.
-# Khi chay tren may host, override bang env var API_BASE_URL=http://localhost:8000
-API_BASE = os.environ.get("API_BASE_URL", "http://backend:8000") + "/api"
+# API_BASE_URL: set qua env var
+# - Docker local:  http://backend:8000  (default)
+# - Render:        https://<backend-service>.onrender.com  (set trong render.yaml)
+# - Local dev:     http://localhost:8000
+_api_base_raw = os.environ.get("API_BASE_URL", "http://backend:8000")
+# Render fromService host tra ve hostname k co scheme, prepend https://
+if _api_base_raw and not _api_base_raw.startswith("http"):
+    _api_base_raw = "https://" + _api_base_raw
+API_BASE = _api_base_raw.rstrip("/") + "/api"
 
 st.set_page_config(
     page_title="RFQ Automation System",
