@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from backend.database import get_db
+from backend.database import get_db, SessionLocal
 from backend.models import RFQ, VendorResponse
 from backend.schemas import (
     RFQCreate, RFQResponse, RFQDetail, VendorOut, VendorResponseOut,
@@ -65,11 +65,14 @@ def api_send_rfq_emails(request: Request, background_tasks: BackgroundTasks, rfq
         raise HTTPException(status_code=404, detail="RFQ not found")
 
     def _run():
+        bg_db = SessionLocal()
         try:
-            result = send_rfq_to_vendors(db, rfq_id)
+            result = send_rfq_to_vendors(bg_db, rfq_id)
             logger.info("Background send done: %s", result)
         except Exception as exc:
             logger.error("Background send failed for RFQ #%d: %s", rfq_id, exc)
+        finally:
+            bg_db.close()
 
     background_tasks.add_task(_run)
     return {"task_id": None, "status": "queued", "message": f"Sending emails for RFQ #{rfq_id} in background"}
@@ -84,11 +87,14 @@ def api_poll_responses(request: Request, background_tasks: BackgroundTasks, rfq_
         raise HTTPException(status_code=404, detail="RFQ not found")
 
     def _run():
+        bg_db = SessionLocal()
         try:
-            result = poll_and_process_responses(db, rfq_id)
+            result = poll_and_process_responses(bg_db, rfq_id)
             logger.info("Background poll done: %s", result)
         except Exception as exc:
             logger.error("Background poll failed for RFQ #%d: %s", rfq_id, exc)
+        finally:
+            bg_db.close()
 
     background_tasks.add_task(_run)
     return {"task_id": None, "status": "queued", "message": f"Polling responses for RFQ #{rfq_id} in background"}
