@@ -289,7 +289,11 @@ def get_comparison_table(db: Session, rfq_id: int) -> Optional[ComparisonTable]:
 
     responses = db.query(VendorResponse).filter(
         VendorResponse.rfq_id == rfq_id,
-        VendorResponse.status == VendorResponseStatus.EXTRACTED,
+        VendorResponse.status.in_([
+            VendorResponseStatus.EXTRACTED,
+            VendorResponseStatus.RECEIVED,
+            VendorResponseStatus.FAILED,
+        ]),
     ).all()
 
     rows = []
