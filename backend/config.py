@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     exchange_rate_api_key: str = ""
     exchange_rate_base_url: str = "https://v6.exchangerate-api.com/v6"
 
+    # SendGrid (dung thay SMTP neu duoc set — Render block SMTP)
+    sendgrid_api_key: str = ""
+
     # Sender profile (hien thi trong email signature)
     sender_name: str = "Duy"
     sender_position: str = "Procurement Manager"
