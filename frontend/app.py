@@ -179,7 +179,9 @@ elif page == "RFQ List":
                             with st.spinner("Queueing email task..."):
                                 result = api_post(f"/rfq/{rfq['id']}/send")
                                 if result:
-                                    st.success(f"📨 {result.get('message', 'Task queued')} (task: {result.get('task_id', 'N/A')[:8]}...)")
+                                    task_id = result.get('task_id') or 'N/A'
+                                    task_short = task_id[:8] if task_id != 'N/A' else 'N/A'
+                                    st.success(f"📨 {result.get('message', 'Task queued')} (task: {task_short})")
                                     st.info("Emails are being sent in background. Refresh to see status.")
 
                     with bcol2:
@@ -187,7 +189,9 @@ elif page == "RFQ List":
                             with st.spinner("Queueing poll task..."):
                                 result = api_post(f"/rfq/{rfq['id']}/poll")
                                 if result:
-                                    st.success(f"📬 {result.get('message', 'Task queued')} (task: {result.get('task_id', 'N/A')[:8]}...)")
+                                    task_id = result.get('task_id') or 'N/A'
+                                    task_short = task_id[:8] if task_id != 'N/A' else 'N/A'
+                                    st.success(f"📬 {result.get('message', 'Task queued')} (task: {task_short})")
                                     st.info("Polling in background. Refresh to see new responses.")
 
                     with bcol3:
